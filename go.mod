@@ -29,7 +29,6 @@ require (
 	github.com/gosuri/uitable v0.0.4
 	github.com/hashicorp/go-uuid v1.0.2
 	github.com/hashicorp/go-version v1.4.0
-	github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 	github.com/jesseduffield/gocui v0.3.0
 	github.com/k0kubun/pp v3.0.1+incompatible
 	github.com/knqyf263/go-apk-version v0.0.0-20200609155635-041fdbb8563f
@@ -50,7 +49,7 @@ require (
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cast v1.4.1 // indirect
-	github.com/spf13/cobra v1.3.0
+	github.com/spf13/cobra v1.4.0
 	github.com/vulsio/go-cve-dictionary v0.8.2-0.20211028094424-0a854f8e8f85
 	github.com/vulsio/go-exploitdb v0.4.2-0.20211028071949-1ebf9c4f6c4d
 	github.com/vulsio/go-kev v0.1.0
