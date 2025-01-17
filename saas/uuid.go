@@ -108,10 +108,12 @@ func writeToFile(cnf config.Config, path string) error {
 	}
 
 	c := struct {
+		Version string                       `toml:"version"`
 		Saas    *config.SaasConf             `toml:"saas"`
 		Default config.ServerInfo            `toml:"default"`
 		Servers map[string]config.ServerInfo `toml:"servers"`
 	}{
+		Version: "v2",
 		Saas:    &cnf.Saas,
 		Default: cnf.Default,
 		Servers: cnf.Servers,
@@ -138,7 +140,7 @@ func writeToFile(cnf config.Config, path string) error {
 	}
 	str := strings.Replace(buf.String(), "\n  [", "\n\n  [", -1)
 	str = fmt.Sprintf("%s\n\n%s",
-		"# See README for details: https://vuls.io/docs/en/usage-settings.html",
+		"# See README for details: https://vuls.io/docs/en/config.toml.html",
 		str)
 
 	return os.WriteFile(realPath, []byte(str), 0600)

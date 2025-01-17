@@ -1,5 +1,4 @@
 //go:build !scanner
-// +build !scanner
 
 package detector
 
@@ -163,15 +162,15 @@ func (client goCveDictClient) detectCveByCpeURI(cpeURI string, useJVN bool) (cve
 		return cves, nil
 	}
 
-	nvdCves := []cvemodels.CveDetail{}
+	filtered := []cvemodels.CveDetail{}
 	for _, cve := range cves {
-		if !cve.HasNvd() {
+		if !cve.HasNvd() && !cve.HasFortinet() {
 			continue
 		}
 		cve.Jvns = []cvemodels.Jvn{}
-		nvdCves = append(nvdCves, cve)
+		filtered = append(filtered, cve)
 	}
-	return nvdCves, nil
+	return filtered, nil
 }
 
 func httpPost(url string, query map[string]string) ([]cvemodels.CveDetail, error) {

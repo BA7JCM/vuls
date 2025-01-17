@@ -1,5 +1,4 @@
 //go:build !scanner
-// +build !scanner
 
 package server
 
@@ -76,7 +75,7 @@ func (h VulsHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	logging.Log.Infof("Fill CVE detailed with CVE-DB")
-	if err := detector.FillCvesWithNvdJvn(&r, config.Conf.CveDict, config.Conf.LogOpts); err != nil {
+	if err := detector.FillCvesWithGoCVEDictionary(&r, config.Conf.CveDict, config.Conf.LogOpts); err != nil {
 		logging.Log.Errorf("Failed to fill with CVE: %+v", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 	}
@@ -111,6 +110,29 @@ func (h VulsHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// properly for scans sent to vuls when running in server mode
 	if r.ReportedAt.IsZero() {
 		r.ReportedAt = time.Now()
+	}
+
+	nFiltered := 0
+	logging.Log.Infof("%s: total %d CVEs detected", r.FormatServerName(), len(r.ScannedCves))
+
+	if 0 < config.Conf.CvssScoreOver {
+		r.ScannedCves, nFiltered = r.ScannedCves.FilterByCvssOver(config.Conf.CvssScoreOver)
+		logging.Log.Infof("%s: %d CVEs filtered by --cvss-over=%g", r.FormatServerName(), nFiltered, config.Conf.CvssScoreOver)
+	}
+
+	if 0 < config.Conf.ConfidenceScoreOver {
+		r.ScannedCves, nFiltered = r.ScannedCves.FilterByConfidenceOver(config.Conf.ConfidenceScoreOver)
+		logging.Log.Infof("%s: %d CVEs filtered by --confidence-over=%d", r.FormatServerName(), nFiltered, config.Conf.ConfidenceScoreOver)
+	}
+
+	if config.Conf.IgnoreUnscoredCves {
+		r.ScannedCves, nFiltered = r.ScannedCves.FindScoredVulns()
+		logging.Log.Infof("%s: %d CVEs filtered by --ignore-unscored-cves", r.FormatServerName(), nFiltered)
+	}
+
+	if config.Conf.IgnoreUnfixed {
+		r.ScannedCves, nFiltered = r.ScannedCves.FilterUnfixed(config.Conf.IgnoreUnfixed)
+		logging.Log.Infof("%s: %d CVEs filtered by --ignore-unfixed", r.FormatServerName(), nFiltered)
 	}
 
 	// report

@@ -44,7 +44,7 @@ func TestConvert(t *testing.T) {
 			want: []string{"cpe:2.3:o:cisco:ios:15.1(4)m4:*:*:*:*:*:*:*"},
 		},
 		{
-			name: "Cisco IOS Vresion 15.5(3)M on Cisco 892J-K9-V02",
+			name: "Cisco IOS Version 15.5(3)M on Cisco 892J-K9-V02",
 			args: snmp.Result{
 				SysDescr0: `Cisco IOS Software, C890 Software (C890-UNIVERSALK9-M), Version 15.5(3)M, RELEASE SOFTWARE (fc1)
 		Technical Support: http://www.cisco.com/techsupport
@@ -187,6 +187,17 @@ func TestConvert(t *testing.T) {
 				}},
 			},
 			want: []string{"cpe:2.3:h:fortinet:fortigate-60f:-:*:*:*:*:*:*:*", "cpe:2.3:o:fortinet:fortios:6.4.11:*:*:*:*:*:*:*"},
+		},
+		{
+			name: "FortiSwitch-108E",
+			args: snmp.Result{
+				EntPhysicalTables: map[int]snmp.EntPhysicalTable{1: {
+					EntPhysicalMfgName:     "Fortinet",
+					EntPhysicalName:        "FS_108E",
+					EntPhysicalSoftwareRev: "FortiSwitch-108E v6.4.6,build0000,000000 (GA)",
+				}},
+			},
+			want: []string{"cpe:2.3:h:fortinet:fortiswitch-108e:-:*:*:*:*:*:*:*", "cpe:2.3:o:fortinet:fortiswitch:6.4.6:*:*:*:*:*:*:*", "cpe:2.3:o:fortinet:fortiswitch_firmware:6.4.6:*:*:*:*:*:*:*"},
 		},
 		{
 			name: "YAMAHA RTX1000",

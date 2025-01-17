@@ -2,15 +2,17 @@ package scanner
 
 import (
 	"fmt"
+	"maps"
 	"math/rand"
 	"net/http"
 	"os"
 	ex "os/exec"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
-	"golang.org/x/exp/maps"
 	"golang.org/x/xerrors"
 
 	"github.com/future-architect/vuls/cache"
@@ -34,6 +36,8 @@ var (
 )
 
 var servers, errServers []osTypeInterface
+
+var userDirectoryPath = ""
 
 // Base Interface
 type osTypeInterface interface {
@@ -204,7 +208,7 @@ func ViaHTTP(header http.Header, body string, toLocalFile bool) (models.ScanResu
 			RunningKernel: models.Kernel{
 				Version: kernelVersion,
 			},
-			WindowsKB:   &models.WindowsKB{Applied: maps.Keys(applied), Unapplied: maps.Keys(unapplied)},
+			WindowsKB:   &models.WindowsKB{Applied: slices.Collect(maps.Keys(applied)), Unapplied: slices.Collect(maps.Keys(unapplied))},
 			ScannedCves: models.VulnInfos{},
 		}, nil
 	default:
@@ -261,6 +265,8 @@ func ParseInstalledPkgs(distro config.Distro, kernel models.Kernel, pkgList stri
 
 	var osType osTypeInterface
 	switch distro.Family {
+	case constant.Alpine:
+		osType = &alpine{base: base}
 	case constant.Debian, constant.Ubuntu, constant.Raspbian:
 		osType = &debian{base: base}
 	case constant.RedHat:
@@ -279,6 +285,10 @@ func ParseInstalledPkgs(distro config.Distro, kernel models.Kernel, pkgList stri
 		osType = &fedora{redhatBase: redhatBase{base: base}}
 	case constant.OpenSUSE, constant.OpenSUSELeap, constant.SUSEEnterpriseServer, constant.SUSEEnterpriseDesktop:
 		osType = &suse{redhatBase: redhatBase{base: base}}
+	case constant.Windows:
+		osType = &windows{base: base}
+	case constant.MacOSX, constant.MacOSXServer, constant.MacOS, constant.MacOSServer:
+		osType = &macos{base: base}
 	default:
 		return models.Packages{}, models.SrcPackages{}, xerrors.Errorf("Server mode for %s is not implemented yet", base.Distro.Family)
 	}
@@ -289,12 +299,10 @@ func ParseInstalledPkgs(distro config.Distro, kernel models.Kernel, pkgList stri
 // initServers detect the kind of OS distribution of target servers
 func (s Scanner) initServers() error {
 	hosts, errHosts := s.detectServerOSes()
-	if len(hosts) == 0 {
-		return xerrors.New("No scannable host OS")
+	if (len(hosts) + len(errHosts)) == 0 {
+		return xerrors.New("No host defined. Check the configuration")
 	}
 
-	// to generate random color for logging
-	rand.Seed(time.Now().UnixNano())
 	for _, srv := range hosts {
 		srv.setLogger(logging.NewCustomLogger(s.Debug, s.Quiet, s.LogToFile, s.LogDir, config.Colors[rand.Intn(len(config.Colors))], srv.getServerInfo().GetServerName()))
 	}
@@ -313,8 +321,8 @@ func (s Scanner) initServers() error {
 	servers = append(servers, containers...)
 	errServers = append(errHosts, errContainers...)
 
-	if len(servers) == 0 {
-		return xerrors.New("No scannable servers")
+	if (len(servers) + len(errServers)) == 0 {
+		return xerrors.New("No server defined. Check the configuration")
 	}
 	return nil
 }
@@ -439,7 +447,8 @@ func validateSSHConfig(c *config.ServerInfo) error {
 	sshScanCmd := strings.Join([]string{sshKeyscanBinaryPath, "-p", c.Port, sshConfig.hostname}, " ")
 	r := localExec(*c, sshScanCmd, noSudo)
 	if !r.isSuccess() {
-		return xerrors.Errorf("Failed to ssh-keyscan. cmd: %s, err: %w", sshScanCmd, r.Error)
+		logging.Log.Warnf("SSH configuration validation is skipped. err: Failed to ssh-keyscan. cmd: %s, err: %s", sshScanCmd, r.Error)
+		return nil
 	}
 	serverKeys := parseSSHScan(r.Stdout)
 
@@ -463,7 +472,8 @@ func validateSSHConfig(c *config.ServerInfo) error {
 		if r := localExec(*c, cmd, noSudo); r.isSuccess() {
 			keyType, clientKey, err := parseSSHKeygen(r.Stdout)
 			if err != nil {
-				return xerrors.Errorf("Failed to parse ssh-keygen result. stdout: %s, err: %w", r.Stdout, r.Error)
+				logging.Log.Warnf("SSH configuration validation is skipped. err: Failed to parse ssh-keygen result. stdout: %s, err: %s", r.Stdout, r.Error)
+				return nil
 			}
 			if serverKey, ok := serverKeys[keyType]; ok && serverKey == clientKey {
 				return nil
@@ -565,6 +575,13 @@ func parseSSHConfiguration(stdout string) sshConfiguration {
 			sshConfig.globalKnownHosts = strings.Split(strings.TrimPrefix(line, "globalknownhostsfile "), " ")
 		case strings.HasPrefix(line, "userknownhostsfile "):
 			sshConfig.userKnownHosts = strings.Split(strings.TrimPrefix(line, "userknownhostsfile "), " ")
+			if runtime.GOOS == constant.Windows {
+				for i, userKnownHost := range sshConfig.userKnownHosts {
+					if strings.HasPrefix(userKnownHost, "~") {
+						sshConfig.userKnownHosts[i] = normalizeHomeDirPathForWindows(userKnownHost)
+					}
+				}
+			}
 		case strings.HasPrefix(line, "proxycommand "):
 			sshConfig.proxyCommand = strings.TrimPrefix(line, "proxycommand ")
 		case strings.HasPrefix(line, "proxyjump "):
@@ -572,6 +589,11 @@ func parseSSHConfiguration(stdout string) sshConfiguration {
 		}
 	}
 	return sshConfig
+}
+
+func normalizeHomeDirPathForWindows(userKnownHost string) string {
+	userKnownHostPath := filepath.Join(os.Getenv("userprofile"), strings.TrimPrefix(userKnownHost, "~"))
+	return strings.ReplaceAll(userKnownHostPath, "/", "\\")
 }
 
 func parseSSHScan(stdout string) map[string]string {
@@ -774,6 +796,11 @@ func (s Scanner) detectOS(c config.ServerInfo) osTypeInterface {
 		return osType
 	}
 
+	if itsMe, osType := detectMacOS(c); itsMe {
+		logging.Log.Debugf("MacOS. Host: %s:%s", c.Host, c.Port)
+		return osType
+	}
+
 	osType := &unknown{base{ServerInfo: c}}
 	osType.setErrs([]error{xerrors.New("Unknown OS Type")})
 	return osType
@@ -814,7 +841,6 @@ func (s Scanner) checkDependencies() {
 	parallelExec(func(o osTypeInterface) error {
 		return o.checkDeps()
 	}, s.TimeoutSec)
-	return
 }
 
 // checkIfSudoNoPasswd checks whether vuls can sudo with nopassword via SSH
@@ -822,7 +848,6 @@ func (s Scanner) checkIfSudoNoPasswd() {
 	parallelExec(func(o osTypeInterface) error {
 		return o.checkIfSudoNoPasswd()
 	}, s.TimeoutSec)
-	return
 }
 
 // detectPlatform detects the platform of each servers.
@@ -874,7 +899,7 @@ func (s Scanner) detectIPS() {
 
 // execScan scan
 func (s Scanner) execScan() error {
-	if len(servers) == 0 {
+	if (len(servers) + len(errServers)) == 0 {
 		return xerrors.New("No server defined. Check the configuration")
 	}
 

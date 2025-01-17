@@ -3,7 +3,7 @@
 	install \
 	all \
 	vendor \
- 	lint \
+	lint \
 	vet \
 	fmt \
 	fmtcheck \
@@ -19,17 +19,24 @@ REVISION := $(shell git rev-parse --short HEAD)
 BUILDTIME := $(shell date "+%Y%m%d_%H%M%S")
 LDFLAGS := -X 'github.com/future-architect/vuls/config.Version=$(VERSION)' -X 'github.com/future-architect/vuls/config.Revision=build-$(BUILDTIME)_$(REVISION)'
 GO := CGO_ENABLED=0 go
+GO_WINDOWS := GOOS=windows GOARCH=amd64 $(GO)
 
 all: build test
 
 build: ./cmd/vuls/main.go
 	$(GO) build -a -ldflags "$(LDFLAGS)" -o vuls ./cmd/vuls
 
+build-windows: ./cmd/vuls/main.go
+	$(GO_WINDOWS) build -a -ldflags " $(LDFLAGS)" -o vuls.exe ./cmd/vuls
+
 install: ./cmd/vuls/main.go
 	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/vuls
 
 build-scanner: ./cmd/scanner/main.go 
 	$(GO) build -tags=scanner -a -ldflags "$(LDFLAGS)" -o vuls ./cmd/scanner
+
+build-scanner-windows: ./cmd/scanner/main.go
+	$(GO_WINDOWS) build -tags=scanner -a -ldflags " $(LDFLAGS)" -o vuls.exe ./cmd/scanner
 
 install-scanner: ./cmd/scanner/main.go 
 	$(GO) install -tags=scanner -ldflags "$(LDFLAGS)" ./cmd/scanner
@@ -83,7 +90,7 @@ NOW=$(shell date '+%Y-%m-%dT%H-%M-%S%z')
 NOW_JSON_DIR := '${BASE_DIR}/$(NOW)'
 ONE_SEC_AFTER=$(shell date -d '+1 second' '+%Y-%m-%dT%H-%M-%S%z')
 ONE_SEC_AFTER_JSON_DIR := '${BASE_DIR}/$(ONE_SEC_AFTER)'
-LIBS := 'bundler' 'pip' 'pipenv' 'poetry' 'composer' 'npm' 'yarn' 'pnpm' 'cargo' 'gomod' 'gosum' 'gobinary' 'jar' 'pom' 'gradle' 'nuget-lock' 'nuget-config' 'dotnet-deps' 'conan' 'nvd_exact' 'nvd_rough' 'nvd_vendor_product' 'nvd_match_no_jvn' 'jvn_vendor_product' 'jvn_vendor_product_nover'
+LIBS := 'bundler' 'dart' 'elixir' 'pip' 'pipenv' 'poetry' 'composer' 'npm-v1' 'npm-v2' 'npm-v3' 'yarn' 'pnpm' 'pnpm-v9' 'cargo' 'gomod' 'gosum' 'gobinary' 'jar' 'jar-wrong-name-log4j-core' 'war' 'pom' 'gradle' 'nuget-lock' 'nuget-config' 'dotnet-deps' 'dotnet-package-props' 'conan-v1' 'conan-v2' 'swift-cocoapods' 'swift-swift' 'rust-binary'
 
 diff:
 	# git clone git@github.com:vulsio/vulsctl.git

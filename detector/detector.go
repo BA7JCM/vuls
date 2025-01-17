@@ -1,10 +1,11 @@
 //go:build !scanner
-// +build !scanner
 
 package detector
 
 import (
+	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,7 +45,7 @@ func Detect(rs []models.ScanResult, dir string) ([]models.ScanResult, error) {
 			r.ScannedCves = models.VulnInfos{}
 		}
 
-		if err := DetectLibsCves(&r, config.Conf.TrivyCacheDBDir, config.Conf.NoProgress); err != nil {
+		if err := DetectLibsCves(&r, config.Conf.TrivyOpts, config.Conf.LogOpts, config.Conf.NoProgress); err != nil {
 			return nil, xerrors.Errorf("Failed to fill with Library dependency: %w", err)
 		}
 
@@ -79,6 +80,112 @@ func Detect(rs []models.ScanResult, dir string) ([]models.ScanResult, error) {
 				UseJVN: true,
 			})
 		}
+
+		if slices.Contains([]string{constant.MacOSX, constant.MacOSXServer, constant.MacOS, constant.MacOSServer}, r.Family) {
+			var targets []string
+			if r.Release != "" {
+				switch r.Family {
+				case constant.MacOSX:
+					targets = append(targets, "mac_os_x")
+				case constant.MacOSXServer:
+					targets = append(targets, "mac_os_x_server")
+				case constant.MacOS:
+					targets = append(targets, "macos", "mac_os")
+				case constant.MacOSServer:
+					targets = append(targets, "macos_server", "mac_os_server")
+				}
+				for _, t := range targets {
+					cpes = append(cpes, Cpe{
+						CpeURI: fmt.Sprintf("cpe:/o:apple:%s:%s", t, r.Release),
+						UseJVN: false,
+					})
+				}
+			}
+			for _, p := range r.Packages {
+				if p.Version == "" {
+					continue
+				}
+				switch p.Repository {
+				case "com.apple.Safari":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:safari:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.Music":
+					for _, t := range targets {
+						cpes = append(cpes,
+							Cpe{
+								CpeURI: fmt.Sprintf("cpe:/a:apple:music:%s::~~~%s~~", p.Version, t),
+								UseJVN: false,
+							},
+							Cpe{
+								CpeURI: fmt.Sprintf("cpe:/a:apple:apple_music:%s::~~~%s~~", p.Version, t),
+								UseJVN: false,
+							},
+						)
+					}
+				case "com.apple.mail":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:mail:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.Terminal":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:terminal:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.shortcuts":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:shortcuts:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.iCal":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:ical:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.iWork.Keynote":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:keynote:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.iWork.Numbers":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:numbers:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.iWork.Pages":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:pages:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				case "com.apple.dt.Xcode":
+					for _, t := range targets {
+						cpes = append(cpes, Cpe{
+							CpeURI: fmt.Sprintf("cpe:/a:apple:xcode:%s::~~~%s~~", p.Version, t),
+							UseJVN: false,
+						})
+					}
+				}
+			}
+		}
+
 		if err := DetectCpeURIsCves(&r, cpes, config.Conf.CveDict, config.Conf.LogOpts); err != nil {
 			return nil, xerrors.Errorf("Failed to detect CVE of `%s`: %w", cpeURIs, err)
 		}
@@ -96,7 +203,7 @@ func Detect(rs []models.ScanResult, dir string) ([]models.ScanResult, error) {
 			return nil, xerrors.Errorf("Failed to fill with gost: %w", err)
 		}
 
-		if err := FillCvesWithNvdJvn(&r, config.Conf.CveDict, config.Conf.LogOpts); err != nil {
+		if err := FillCvesWithGoCVEDictionary(&r, config.Conf.CveDict, config.Conf.LogOpts); err != nil {
 			return nil, xerrors.Errorf("Failed to fill with CVE: %w", err)
 		}
 
@@ -262,7 +369,7 @@ func DetectPkgCves(r *models.ScanResult, ovalCnf config.GovalDictConf, gostCnf c
 // isPkgCvesDetactable checks whether CVEs is detactable with gost and oval from the result
 func isPkgCvesDetactable(r *models.ScanResult) bool {
 	switch r.Family {
-	case constant.FreeBSD, constant.ServerTypePseudo:
+	case constant.FreeBSD, constant.MacOSX, constant.MacOSXServer, constant.MacOS, constant.MacOSServer, constant.ServerTypePseudo:
 		logging.Log.Infof("%s type. Skip OVAL and gost detection", r.Family)
 		return false
 	case constant.Windows:
@@ -327,8 +434,8 @@ func DetectWordPressCves(r *models.ScanResult, wpCnf config.WpScanConf) error {
 	return nil
 }
 
-// FillCvesWithNvdJvn fills CVE detail with NVD, JVN
-func FillCvesWithNvdJvn(r *models.ScanResult, cnf config.GoCveDictConf, logOpts logging.LogOpts) (err error) {
+// FillCvesWithGoCVEDictionary fills CVE detail with NVD, JVN, Fortinet, MITRE
+func FillCvesWithGoCVEDictionary(r *models.ScanResult, cnf config.GoCveDictConf, logOpts logging.LogOpts) (err error) {
 	cveIDs := []string{}
 	for _, v := range r.ScannedCves {
 		cveIDs = append(cveIDs, v.CveID)
@@ -352,6 +459,8 @@ func FillCvesWithNvdJvn(r *models.ScanResult, cnf config.GoCveDictConf, logOpts 
 	for _, d := range ds {
 		nvds, exploits, mitigations := models.ConvertNvdToModel(d.CveID, d.Nvds)
 		jvns := models.ConvertJvnToModel(d.CveID, d.Jvns)
+		fortinets := models.ConvertFortinetToModel(d.CveID, d.Fortinets)
+		mitres := models.ConvertMitreToModel(d.CveID, d.Mitres)
 
 		alerts := fillCertAlerts(&d)
 		for cveID, vinfo := range r.ScannedCves {
@@ -361,22 +470,20 @@ func FillCvesWithNvdJvn(r *models.ScanResult, cnf config.GoCveDictConf, logOpts 
 				}
 				for _, con := range nvds {
 					if !con.Empty() {
-						vinfo.CveContents[con.Type] = []models.CveContent{con}
+						vinfo.CveContents[con.Type] = append(vinfo.CveContents[con.Type], con)
 					}
 				}
-				for _, con := range jvns {
+				for _, con := range append(jvns, fortinets...) {
 					if !con.Empty() {
-						found := false
-						for _, cveCont := range vinfo.CveContents[con.Type] {
-							if con.SourceLink == cveCont.SourceLink {
-								found = true
-								break
-							}
-						}
-						if !found {
+						if !slices.ContainsFunc(vinfo.CveContents[con.Type], func(e models.CveContent) bool {
+							return con.SourceLink == e.SourceLink
+						}) {
 							vinfo.CveContents[con.Type] = append(vinfo.CveContents[con.Type], con)
 						}
 					}
+				}
+				for _, con := range mitres {
+					vinfo.CveContents[con.Type] = append(vinfo.CveContents[con.Type], con)
 				}
 				vinfo.AlertDict = alerts
 				vinfo.Exploits = append(vinfo.Exploits, exploits...)
@@ -430,7 +537,7 @@ func detectPkgsCvesWithOval(cnf config.GovalDictConf, r *models.ScanResult, logO
 		logging.Log.Infof("Skip OVAL and Scan with gost alone.")
 		logging.Log.Infof("%s: %d CVEs are detected with OVAL", r.FormatServerName(), 0)
 		return nil
-	case constant.Windows, constant.FreeBSD, constant.ServerTypePseudo:
+	case constant.Windows, constant.MacOSX, constant.MacOSXServer, constant.MacOS, constant.MacOSServer, constant.FreeBSD, constant.ServerTypePseudo:
 		return nil
 	default:
 		logging.Log.Debugf("Check if oval fetched: %s %s", r.Family, r.Release)
@@ -511,6 +618,13 @@ func DetectCpeURIsCves(r *models.ScanResult, cpes []Cpe, cnf config.GoCveDictCon
 
 		for _, detail := range details {
 			advisories := []models.DistroAdvisory{}
+			if detail.HasFortinet() {
+				for _, fortinet := range detail.Fortinets {
+					advisories = append(advisories, models.DistroAdvisory{
+						AdvisoryID: fortinet.AdvisoryID,
+					})
+				}
+			}
 			if !detail.HasNvd() && detail.HasJvn() {
 				for _, jvn := range detail.Jvns {
 					advisories = append(advisories, models.DistroAdvisory{
@@ -523,7 +637,9 @@ func DetectCpeURIsCves(r *models.ScanResult, cpes []Cpe, cnf config.GoCveDictCon
 			if val, ok := r.ScannedCves[detail.CveID]; ok {
 				val.CpeURIs = util.AppendIfMissing(val.CpeURIs, cpe.CpeURI)
 				val.Confidences.AppendIfMissing(maxConfidence)
-				val.DistroAdvisories = advisories
+				for _, adv := range advisories {
+					val.DistroAdvisories.AppendIfMissing(&adv)
+				}
 				r.ScannedCves[detail.CveID] = val
 			} else {
 				v := models.VulnInfo{
@@ -542,9 +658,25 @@ func DetectCpeURIsCves(r *models.ScanResult, cpes []Cpe, cnf config.GoCveDictCon
 }
 
 func getMaxConfidence(detail cvemodels.CveDetail) (max models.Confidence) {
-	if !detail.HasNvd() && detail.HasJvn() {
-		return models.JvnVendorProductMatch
-	} else if detail.HasNvd() {
+	if detail.HasFortinet() {
+		for _, fortinet := range detail.Fortinets {
+			confidence := models.Confidence{}
+			switch fortinet.DetectionMethod {
+			case cvemodels.FortinetExactVersionMatch:
+				confidence = models.FortinetExactVersionMatch
+			case cvemodels.FortinetRoughVersionMatch:
+				confidence = models.FortinetRoughVersionMatch
+			case cvemodels.FortinetVendorProductMatch:
+				confidence = models.FortinetVendorProductMatch
+			}
+			if max.Score < confidence.Score {
+				max = confidence
+			}
+		}
+		return max
+	}
+
+	if detail.HasNvd() {
 		for _, nvd := range detail.Nvds {
 			confidence := models.Confidence{}
 			switch nvd.DetectionMethod {
@@ -559,7 +691,13 @@ func getMaxConfidence(detail cvemodels.CveDetail) (max models.Confidence) {
 				max = confidence
 			}
 		}
+		return max
 	}
+
+	if detail.HasJvn() {
+		return models.JvnVendorProductMatch
+	}
+
 	return max
 }
 

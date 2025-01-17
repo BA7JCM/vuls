@@ -1,5 +1,3 @@
-//go:build !windows
-
 package config
 
 import (
@@ -8,9 +6,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aquasecurity/trivy/pkg/db"
+	"github.com/aquasecurity/trivy/pkg/javadb"
 	"github.com/asaskevich/govalidator"
 	"golang.org/x/xerrors"
 
+	"github.com/future-architect/vuls/config/syslog"
 	"github.com/future-architect/vuls/constant"
 	"github.com/future-architect/vuls/logging"
 )
@@ -21,7 +22,7 @@ var Version = "`make build` or `make install` will show the version"
 // Revision of Git
 var Revision string
 
-// Conf has Configuration
+// Conf has Configuration(v2)
 var Conf Config
 
 // Config is struct of Configuration
@@ -50,7 +51,7 @@ type Config struct {
 	Slack      SlackConf      `json:"-"`
 	EMail      SMTPConf       `json:"-"`
 	HTTP       HTTPConf       `json:"-"`
-	Syslog     SyslogConf     `json:"-"`
+	Syslog     syslog.Conf    `json:"-"`
 	AWS        AWSConf        `json:"-"`
 	Azure      AzureConf      `json:"-"`
 	ChatWork   ChatWorkConf   `json:"-"`
@@ -76,7 +77,6 @@ type ScanOpts struct {
 type ReportOpts struct {
 	CvssScoreOver       float64 `json:"cvssScoreOver,omitempty"`
 	ConfidenceScoreOver int     `json:"confidenceScoreOver,omitempty"`
-	TrivyCacheDBDir     string  `json:"trivyCacheDBDir,omitempty"`
 	NoProgress          bool    `json:"noProgress,omitempty"`
 	RefreshCve          bool    `json:"refreshCve,omitempty"`
 	IgnoreUnfixed       bool    `json:"ignoreUnfixed,omitempty"`
@@ -85,6 +85,23 @@ type ReportOpts struct {
 	DiffMinus           bool    `json:"diffMinus,omitempty"`
 	Diff                bool    `json:"diff,omitempty"`
 	Lang                string  `json:"lang,omitempty"`
+
+	TrivyOpts
+}
+
+var (
+	// DefaultTrivyDBRepositories is the official repositories of Trivy DB
+	DefaultTrivyDBRepositories = []string{db.DefaultGCRRepository, db.DefaultGHCRRepository}
+	// DefaultTrivyJavaDBRepositories is the official repositories of Trivy Java DB
+	DefaultTrivyJavaDBRepositories = []string{javadb.DefaultGCRRepository, javadb.DefaultGHCRRepository}
+)
+
+// TrivyOpts is options for trivy DBs
+type TrivyOpts struct {
+	TrivyCacheDBDir         string   `json:"trivyCacheDBDir,omitempty"`
+	TrivyDBRepositories     []string `json:"trivyDBRepositories,omitempty"`
+	TrivyJavaDBRepositories []string `json:"trivyJavaDBRepositories,omitempty"`
+	TrivySkipJavaDBUpdate   bool     `json:"trivySkipJavaDBUpdate,omitempty"`
 }
 
 // ValidateOnConfigtest validates
